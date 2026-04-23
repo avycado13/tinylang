@@ -1,0 +1,83 @@
+use crate::ast::{Expr, Op, Statement};
+
+grammar;
+
+match {
+    r"\s*" => {},
+    r"//[^\n]*" => {},
+    _,
+}
+
+pub Program: Vec<Statement> = {
+    <stmts:SemiStatement*> => stmts,
+};
+
+SemiStatement: Statement = {
+    <s:Statement> ";" => s,
+};
+
+Statement: Statement = {
+
+"puts" <e:Expr> => Statement::Puts(e),
+    "yell" <e:Expr> => Statement::Puts(e),
+    <name:Ident> "=" <e:Expr> => Statement::Assign(name, e),
+    "if" <cond:Expr> "then" <body:SemiStatement+> <elsif_parts:ElsifPart*> "end" =>
+        Statement::If(cond, body, elsif_parts, None),
+    "if" <cond:Expr> "then" <body:SemiStatement+> <elsif_parts:ElsifPart*> "else" <else_body:SemiStatement+> "end" =>
+        Statement::If(cond, body, elsif_parts, Some(else_body)),
+    "while" <cond:Expr> "do" <body:SemiStatement+> "end" =>
+        Statement::While(cond, body),
+    "def" <name:Ident> "(" <params:Comma<Ident>> ")" <body:SemiStatement+> "end" =>
+        Statement::Def(name, params, body),
+    "return" <e:Expr> => Statement::Return(e),
+    <e:Expr> => Statement::ExprStatement(e),
+};
+
+ElsifPart: (Expr, Vec<Statement>) = {
+    "elsif" <cond:Expr> "then" <body:SemiStatement+> => (cond, body),
+};
+
+Expr: Expr = {
+    <l:Expr> "==" <r:Compare> => Expr::BinOp(Box::new(l), Op::Eq, Box::new(r)),
+    <e:Compare> => e,
+};
+
+Compare: Expr = {
+    <l:Compare> "<" <r:AddSub> => Expr::BinOp(Box::new(l), Op::Lt, Box::new(r)),
+    <l:Compare> ">" <r:AddSub> => Expr::BinOp(Box::new(l), Op::Gt, Box::new(r)),
+    <e:AddSub> => e,
+};
+
+AddSub: Expr = {
+    <l:AddSub> "+" <r:MulDiv> => Expr::BinOp(Box::new(l), Op::Add, Box::new(r)),
+    <l:AddSub> "-" <r:MulDiv> => Expr::BinOp(Box::new(l), Op::Sub, Box::new(r)),
+    <e:MulDiv> => e,
+};
+
+MulDiv: Expr = {
+    <l:MulDiv> "*" <r:Atom> => Expr::BinOp(Box::new(l), Op::Mul, Box::new(r)),
+    <l:MulDiv> "/" <r:Atom> => Expr::BinOp(Box::new(l), Op::Div, Box::new(r)),
+    <e:Atom> => e,
+};
+
+Atom: Expr = {
+    <n:Num> => Expr::Number(n),
+    <s:StringLit> => Expr::StringLiteral(s),
+    "true" => Expr::Bool(true),
+    "false" => Expr::Bool(false),
+    <name:Ident> "(" <args:Comma<Expr>> ")" => Expr::Call(name, args),
+    <name:Ident> => Expr::Variable(name),
+    "(" <e:Expr> ")" => e,
+};
+
+Comma<T>: Vec<T> = {
+    => vec![],
+    <mut v:(<T> ",")*> <e:T> => {
+        v.push(e);
+        v
+    }
+};
+
+Num: f64 = <s:r"[0-9]+(\.[0-9]+)?"> => s.parse().unwrap();
+StringLit: String = <s:r#""[^"]*""#> => s[1..s.len()-1].to_string();
+Ident: String = <s:r"[a-zA-Z_][a-zA-Z0-9_]*"> => s.to_string();
